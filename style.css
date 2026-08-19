@@ -7,6 +7,7 @@ body #sheld.flexPatch #chat {
     flex-grow: 1;
 }
 
+#extensionTopBarSearch.active,
 #extensionTopBarToggleConnectionProfiles.active,
 #extensionTopBarToggleSidebar.active {
     filter: brightness(150%);
@@ -137,6 +138,7 @@ body.reduced-motion #extensionSideBar {
 
 #extensionTopBar {
     display: flex;
+    position: relative;
     flex-direction: row;
     flex-wrap: wrap;
     flex-shrink: 0;
@@ -221,14 +223,51 @@ body.movingUI #extensionTopBar {
     padding-right: 20px;
 }
 
-#extensionTopBarSearchPopup {
-    display: flex;
+#extensionTopBarSearchPanel {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 10px;
+    z-index: 4000;
+    display: none;
     flex-direction: column;
     gap: 10px;
-    min-width: min(520px, 80vw);
+    align-items: stretch;
+    width: min(520px, calc(100vw - 24px));
+    padding: 10px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 8px;
+    background-color: var(--SmartThemeBlurTintColor);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
 }
 
-#extensionTopBarSearchPopup .extensionTopBarSearchField {
+#extensionTopBarSearchPanel.visible {
+    display: flex;
+}
+
+#extensionTopBarSearchPanel .extensionTopBarSearchHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+#extensionTopBarSearchPanel .extensionTopBarSearchHeader strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#extensionTopBarSearchPanel #extensionTopBarSearchClose {
+    flex-shrink: 0;
+    justify-content: center;
+    width: calc(var(--mainFontSize) * 2.2);
+    min-width: calc(var(--mainFontSize) * 2.2);
+    min-height: calc(var(--mainFontSize) * 2.2);
+    margin: 0;
+    padding: 0;
+}
+
+#extensionTopBarSearchPanel .extensionTopBarSearchField {
     display: grid;
     grid-template-columns: 5.5em minmax(0, 1fr);
     align-items: center;
@@ -236,48 +275,48 @@ body.movingUI #extensionTopBar {
     margin: 0;
 }
 
-#extensionTopBarSearchPopup .extensionTopBarSearchField span {
+#extensionTopBarSearchPanel .extensionTopBarSearchField span {
     opacity: 0.8;
     white-space: nowrap;
 }
 
-#extensionTopBarSearchPopup .extensionTopBarSearchField input {
+#extensionTopBarSearchPanel .extensionTopBarSearchField input {
     width: 100%;
     margin: 0;
 }
 
-#extensionTopBarSearchPopup .extensionTopBarSearchOptions {
+#extensionTopBarSearchPanel .extensionTopBarSearchOptions {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 8px 14px;
 }
 
-#extensionTopBarSearchPopup .extensionTopBarSearchActions {
+#extensionTopBarSearchPanel .extensionTopBarSearchActions {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 8px;
 }
 
-#extensionTopBarSearchPopup .extensionTopBarSearchActions .menu_button {
+#extensionTopBarSearchPanel .extensionTopBarSearchActions .menu_button {
     justify-content: center;
     min-height: calc(var(--mainFontSize) * 2.2);
     margin: 0;
 }
 
-#extensionTopBarSearchPopup .extensionTopBarSearchActions .menu_button span {
+#extensionTopBarSearchPanel .extensionTopBarSearchActions .menu_button span {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-#extensionTopBarSearchPopup .extensionTopBarSearchActions .menu_button.disabled {
+#extensionTopBarSearchPanel .extensionTopBarSearchActions .menu_button.disabled {
     cursor: not-allowed;
     filter: grayscale(0.5);
     opacity: 0.45;
 }
 
-#extensionTopBarSearchPopup .extensionTopBarSearchStatus {
+#extensionTopBarSearchPanel .extensionTopBarSearchStatus {
     min-height: 1.4em;
     opacity: 0.75;
     text-align: right;
@@ -297,16 +336,18 @@ mark.extensionTopBarSearchHighlight.current {
 }
 
 @media screen and (max-width: 600px) {
-    #extensionTopBarSearchPopup {
-        min-width: 0;
+    #extensionTopBarSearchPanel {
+        right: 0;
+        left: 0;
+        width: auto;
     }
 
-    #extensionTopBarSearchPopup .extensionTopBarSearchField {
+    #extensionTopBarSearchPanel .extensionTopBarSearchField {
         grid-template-columns: 1fr;
         gap: 4px;
     }
 
-    #extensionTopBarSearchPopup .extensionTopBarSearchActions {
+    #extensionTopBarSearchPanel .extensionTopBarSearchActions {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 }

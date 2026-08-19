@@ -8,7 +8,6 @@ const {
     openCharacterChat,
     executeSlashCommandsWithOptions,
     Popup,
-    POPUP_TYPE,
 } = SillyTavern.getContext();
 import { addJQueryHighlight } from './jquery-highlight.js';
 import { getGroupPastChats } from '../../../group-chats.js';
@@ -32,7 +31,7 @@ const connectionProfilesIcon = document.createElement('img');
 const SEARCH_HIGHLIGHT_CLASS = 'extensionTopBarSearchHighlight';
 const SEARCH_CURRENT_CLASS = 'current';
 const searchHighlightOptions = { element: 'mark', className: SEARCH_HIGHLIGHT_CLASS };
-const searchPopupType = POPUP_TYPE?.DISPLAY ?? 4;
+const searchPanel = document.createElement('div');
 const searchState = {
     query: '',
     replace: '',
@@ -42,7 +41,6 @@ const searchState = {
     wholeWord: false,
     controls: {},
 };
-let searchPopup = null;
 
 const icons = [
     {
@@ -277,7 +275,7 @@ function buildSearchRegex() {
 }
 
 /**
- * Collect current popup input values into the search state.
+ * Collect current panel input values into the search state.
  * @returns {void}
  */
 function readSearchControls() {
@@ -395,7 +393,7 @@ function applySearchHighlights() {
 }
 
 /**
- * Update the popup status text and button enabled states.
+ * Update the search panel status text and button enabled states.
  * @returns {void}
  */
 function updateSearchStatus() {
@@ -691,7 +689,7 @@ async function replaceAllSearchMatches() {
 }
 
 /**
- * Bind mouse and keyboard activation to a popup command button.
+ * Bind mouse and keyboard activation to a search panel command button.
  * @param {HTMLElement} element Command element
  * @param {Function} handler Command handler
  * @returns {void}
@@ -723,18 +721,29 @@ function bindSearchCommand(element, handler) {
 }
 
 /**
- * Open the search and replace popup.
- * @returns {Promise<void>}
+ * Close the search panel and clear active highlights.
+ * @returns {void}
  */
-async function onSearchClick() {
-    if (searchPopup?.dlg?.open) {
-        searchState.controls.queryInput?.focus();
-        return;
-    }
+function closeSearchPanel() {
+    readSearchControls();
+    clearSearchHighlights();
+    searchPanel.classList.remove('visible');
+    document.getElementById('extensionTopBarSearch')?.classList.remove('active');
+}
 
-    const content = document.createElement('div');
-    content.id = 'extensionTopBarSearchPopup';
-    content.innerHTML = `
+/**
+ * Initialize the floating search panel.
+ * @returns {void}
+ */
+function addSearchPanel() {
+    searchPanel.id = 'extensionTopBarSearchPanel';
+    searchPanel.innerHTML = `
+        <div class="extensionTopBarSearchHeader">
+            <strong>Search and replace</strong>
+            <div id="extensionTopBarSearchClose" class="menu_button menu_button_icon" title="Close search panel">
+                <i class="fa-solid fa-times"></i>
+            </div>
+        </div>
         <label class="extensionTopBarSearchField" for="extensionTopBarSearchQuery">
             <span>Find</span>
             <input id="extensionTopBarSearchQuery" class="text_pole" type="search" autocomplete="off" placeholder="Search...">
@@ -775,15 +784,16 @@ async function onSearchClick() {
     `;
 
     searchState.controls = {
-        queryInput: content.querySelector('#extensionTopBarSearchQuery'),
-        replaceInput: content.querySelector('#extensionTopBarSearchReplace'),
-        caseSensitiveInput: content.querySelector('#extensionTopBarSearchCaseSensitive'),
-        wholeWordInput: content.querySelector('#extensionTopBarSearchWholeWord'),
-        previousButton: content.querySelector('#extensionTopBarSearchPrevious'),
-        nextButton: content.querySelector('#extensionTopBarSearchNext'),
-        replaceCurrentButton: content.querySelector('#extensionTopBarSearchReplaceCurrent'),
-        replaceAllButton: content.querySelector('#extensionTopBarSearchReplaceAll'),
-        status: content.querySelector('#extensionTopBarSearchStatus'),
+        queryInput: searchPanel.querySelector('#extensionTopBarSearchQuery'),
+        replaceInput: searchPanel.querySelector('#extensionTopBarSearchReplace'),
+        caseSensitiveInput: searchPanel.querySelector('#extensionTopBarSearchCaseSensitive'),
+        wholeWordInput: searchPanel.querySelector('#extensionTopBarSearchWholeWord'),
+        closeButton: searchPanel.querySelector('#extensionTopBarSearchClose'),
+        previousButton: searchPanel.querySelector('#extensionTopBarSearchPrevious'),
+        nextButton: searchPanel.querySelector('#extensionTopBarSearchNext'),
+        replaceCurrentButton: searchPanel.querySelector('#extensionTopBarSearchReplaceCurrent'),
+        replaceAllButton: searchPanel.querySelector('#extensionTopBarSearchReplaceAll'),
+        status: searchPanel.querySelector('#extensionTopBarSearchStatus'),
     };
 
     const {
@@ -797,17 +807,18 @@ async function onSearchClick() {
         !(replaceInput instanceof HTMLInputElement) ||
         !(caseSensitiveInput instanceof HTMLInputElement) ||
         !(wholeWordInput instanceof HTMLInputElement)) {
-        console.warn(t`Search popup controls not found.`);
+        console.warn(t`Search panel controls not found.`);
         return;
     }
 
-    queryInput.value = searchState.query;
-    replaceInput.value = searchState.replace;
-    caseSensitiveInput.checked = searchState.caseSensitive;
-    wholeWordInput.checked = searchState.wholeWord;
-
     queryInput.addEventListener('input', searchRefreshDebounced);
     queryInput.addEventListener('keydown', event => {
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            closeSearchPanel();
+            return;
+        }
+
         if (event.key !== 'Enter') {
             return;
         }
@@ -816,29 +827,38 @@ async function onSearchClick() {
         Promise.resolve(moveSearchMatch(event.shiftKey ? -1 : 1)).catch(error => console.error(t`Search command failed`, error));
     });
     replaceInput.addEventListener('input', readSearchControls);
+    replaceInput.addEventListener('keydown', event => {
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            closeSearchPanel();
+        }
+    });
     caseSensitiveInput.addEventListener('change', () => refreshSearch({ preserveIndex: false }));
     wholeWordInput.addEventListener('change', () => refreshSearch({ preserveIndex: false }));
+    bindSearchCommand(searchState.controls.closeButton, closeSearchPanel);
     bindSearchCommand(searchState.controls.previousButton, () => moveSearchMatch(-1));
     bindSearchCommand(searchState.controls.nextButton, () => moveSearchMatch(1));
     bindSearchCommand(searchState.controls.replaceCurrentButton, replaceCurrentSearchMatch);
     bindSearchCommand(searchState.controls.replaceAllButton, replaceAllSearchMatches);
+    updateSearchStatus();
 
-    searchPopup = new Popup(content, searchPopupType, '', {
-        wider: true,
-        leftAlign: true,
-        allowEscapeClose: true,
-        onOpen: async () => {
-            queryInput.focus();
-            await refreshSearch({ preserveIndex: true });
-        },
-        onClose: () => {
-            clearSearchHighlights();
-            searchPopup = null;
-            searchState.controls = {};
-        },
-    });
+    topBar.appendChild(searchPanel);
+}
 
-    await searchPopup.show();
+/**
+ * Open the floating search panel.
+ * @returns {Promise<void>}
+ */
+async function onSearchClick() {
+    if (searchPanel.classList.contains('visible')) {
+        searchState.controls.queryInput?.focus();
+        return;
+    }
+
+    document.getElementById('extensionTopBarSearch')?.classList.add('active');
+    searchPanel.classList.add('visible');
+    searchState.controls.queryInput?.focus();
+    await refreshSearch({ preserveIndex: true });
 }
 
 const updateStatusDebounced = debounce(onOnlineStatusChange, 1000);
@@ -1256,6 +1276,7 @@ function restorePanelsState() {
     addJQueryHighlight();
     patchSheldIfNeeded();
     addTopBar();
+    addSearchPanel();
     addIcons();
     addSideBar();
     addConnectionProfiles();
