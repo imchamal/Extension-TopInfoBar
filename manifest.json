@@ -8,7 +8,7 @@
     "author": "Cohee1207",
     "version": "1.0.0",
     "homePage": "https://github.com/SillyTavern/Extension-TopInfoBar",
-    "auto_update": true,
+    "auto_update": false,
     "i18n": {
         "zh-cn": "i18n/zh-cn.json",
         "zh-tw": "i18n/zh-tw.json"

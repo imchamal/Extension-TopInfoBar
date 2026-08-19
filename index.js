@@ -8,10 +8,11 @@ const {
     openCharacterChat,
     executeSlashCommandsWithOptions,
     Popup,
+    POPUP_TYPE,
 } = SillyTavern.getContext();
 import { addJQueryHighlight } from './jquery-highlight.js';
 import { getGroupPastChats } from '../../../group-chats.js';
-import { getPastCharacterChats, animation_duration, animation_easing, getGeneratingApi } from '../../../../script.js';
+import { getPastCharacterChats, animation_duration, animation_easing, getGeneratingApi, showMoreMessages } from '../../../../script.js';
 import { debounce, timestampToMoment, sortMoments, uuidv4, waitUntilCondition } from '../../../utils.js';
 import { debounce_timeout } from '../../../constants.js';
 import { t } from '../../../i18n.js';
@@ -24,11 +25,24 @@ const apiBlock = /** @type {HTMLDivElement} */ (document.getElementById('rm_api_
 
 const topBar = document.createElement('div');
 const chatName = document.createElement('select');
-const searchInput = document.createElement('input');
 const connectionProfiles = document.createElement('div');
 const connectionProfilesStatus = document.createElement('div');
 const connectionProfilesSelect = document.createElement('select');
 const connectionProfilesIcon = document.createElement('img');
+const SEARCH_HIGHLIGHT_CLASS = 'extensionTopBarSearchHighlight';
+const SEARCH_CURRENT_CLASS = 'current';
+const searchHighlightOptions = { element: 'mark', className: SEARCH_HIGHLIGHT_CLASS };
+const searchPopupType = POPUP_TYPE?.DISPLAY ?? 4;
+const searchState = {
+    query: '',
+    replace: '',
+    matches: [],
+    currentIndex: -1,
+    caseSensitive: false,
+    wholeWord: false,
+    controls: {},
+};
+let searchPopup = null;
 
 const icons = [
     {
@@ -45,6 +59,13 @@ const icons = [
         title: t`Show connection profiles`,
         isTemporaryAllowed: true,
         onClick: onToggleConnectionProfilesClick,
+    },
+    {
+        id: 'extensionTopBarSearch',
+        icon: 'fa-fw fa-solid fa-magnifying-glass',
+        position: 'right',
+        title: t`Search and replace`,
+        onClick: onSearchClick,
     },
     {
         id: 'extensionTopBarChatManager',
@@ -232,33 +253,600 @@ async function getChatFiles() {
 }
 
 /**
- * Highlight search query in chat messages
- * @param {string} query Search query
- * @returns {void}
+ * Escape regex special characters in a literal search query.
+ * @param {string} value String to escape
+ * @returns {string} Escaped string
  */
-function searchInChat(query) {
-    const options = { element: 'mark', className: 'highlight' };
-    const messages = jQuery(chat).find('.mes_text');
-    messages.unhighlight(options);
-    if (!query) {
-        return;
-    }
-    const splitQuery = query.split(/\s|\b/);
-    messages.highlight(splitQuery, options);
+function escapeRegExp(value) {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-const searchDebounced = debounce((x) => searchInChat(x), 500);
+/**
+ * Build a global regular expression from the current search state.
+ * @returns {RegExp|null} Search regex
+ */
+function buildSearchRegex() {
+    if (!searchState.query) {
+        return null;
+    }
+
+    const flags = searchState.caseSensitive ? 'g' : 'gi';
+    const source = escapeRegExp(searchState.query);
+    const pattern = searchState.wholeWord ? `\\b${source}\\b` : source;
+    return new RegExp(pattern, flags);
+}
+
+/**
+ * Collect current popup input values into the search state.
+ * @returns {void}
+ */
+function readSearchControls() {
+    const controls = searchState.controls;
+    searchState.query = controls.queryInput?.value.trim() ?? '';
+    searchState.replace = controls.replaceInput?.value ?? '';
+    searchState.caseSensitive = Boolean(controls.caseSensitiveInput?.checked);
+    searchState.wholeWord = Boolean(controls.wholeWordInput?.checked);
+}
+
+/**
+ * Get the saved message text that should be searched and replaced.
+ * @param {object} message Chat message object
+ * @returns {string} Message text
+ */
+function getMessageSearchText(message) {
+    return typeof message?.mes === 'string' ? message.mes : '';
+}
+
+/**
+ * Rebuild match indexes from the saved chat data.
+ * @param {number} preferredIndex Preferred active match index
+ * @returns {void}
+ */
+function rebuildSearchMatches(preferredIndex = 0) {
+    const regex = buildSearchRegex();
+    const context = SillyTavern.getContext();
+    searchState.matches = [];
+
+    if (!regex || !Array.isArray(context.chat)) {
+        searchState.currentIndex = -1;
+        return;
+    }
+
+    context.chat.forEach((message, messageId) => {
+        const text = getMessageSearchText(message);
+        let match;
+        let occurrenceIndex = 0;
+
+        regex.lastIndex = 0;
+        while ((match = regex.exec(text)) !== null) {
+            if (!match[0]) {
+                regex.lastIndex += 1;
+                continue;
+            }
+
+            searchState.matches.push({
+                messageId,
+                occurrenceIndex,
+                start: match.index,
+                end: match.index + match[0].length,
+            });
+            occurrenceIndex += 1;
+        }
+    });
+
+    if (searchState.matches.length === 0) {
+        searchState.currentIndex = -1;
+        return;
+    }
+
+    searchState.currentIndex = Math.min(Math.max(preferredIndex, 0), searchState.matches.length - 1);
+}
+
+/**
+ * Remove active search highlighting from currently rendered messages.
+ * @returns {void}
+ */
+function clearSearchHighlights() {
+    jQuery(chat).find('.mes_text').unhighlight(searchHighlightOptions);
+}
+
+/**
+ * Assign stable search indexes to the visible highlight nodes.
+ * @returns {void}
+ */
+function syncSearchHighlightIndexes() {
+    const perMessageCounts = new Map();
+    const marks = chat.querySelectorAll(`.mes_text mark.${SEARCH_HIGHLIGHT_CLASS}`);
+
+    marks.forEach(mark => {
+        const messageElement = mark.closest('.mes');
+        const messageId = Number(messageElement?.getAttribute('mesid'));
+        if (!Number.isFinite(messageId)) {
+            return;
+        }
+
+        const occurrenceIndex = perMessageCounts.get(messageId) ?? 0;
+        const matchIndex = searchState.matches.findIndex(match => match.messageId === messageId && match.occurrenceIndex === occurrenceIndex);
+        if (matchIndex !== -1) {
+            mark.dataset.topbarSearchIndex = String(matchIndex);
+        }
+        perMessageCounts.set(messageId, occurrenceIndex + 1);
+    });
+}
+
+/**
+ * Highlight matches in currently rendered messages.
+ * @returns {void}
+ */
+function applySearchHighlights() {
+    clearSearchHighlights();
+
+    if (!searchState.query) {
+        return;
+    }
+
+    const messages = jQuery(chat).find('.mes_text');
+    messages.highlight(searchState.query, {
+        ...searchHighlightOptions,
+        caseSensitive: searchState.caseSensitive,
+        wordsOnly: searchState.wholeWord,
+    });
+    syncSearchHighlightIndexes();
+}
+
+/**
+ * Update the popup status text and button enabled states.
+ * @returns {void}
+ */
+function updateSearchStatus() {
+    const controls = searchState.controls;
+    const hasMatches = searchState.matches.length > 0;
+    const canReplace = hasMatches && searchState.query.length > 0;
+
+    if (controls.status) {
+        if (!searchState.query) {
+            controls.status.textContent = t`Enter a search term.`;
+        } else if (!hasMatches) {
+            controls.status.textContent = t`No matches.`;
+        } else {
+            controls.status.textContent = `${searchState.currentIndex + 1} / ${searchState.matches.length}`;
+        }
+    }
+
+    for (const button of [controls.previousButton, controls.nextButton, controls.replaceCurrentButton]) {
+        setCommandDisabled(button, !canReplace);
+    }
+    setCommandDisabled(controls.replaceAllButton, !canReplace);
+}
+
+/**
+ * Enable or disable a popup command element.
+ * @param {HTMLElement} element Command element
+ * @param {boolean} disabled Disabled state
+ * @returns {void}
+ */
+function setCommandDisabled(element, disabled) {
+    if (!element) {
+        return;
+    }
+
+    element.setAttribute('aria-disabled', String(disabled));
+    element.classList.toggle('disabled', disabled);
+}
+
+/**
+ * Return the first rendered message id.
+ * @returns {number} First rendered message id
+ */
+function getFirstRenderedMessageId() {
+    const ids = Array.from(chat.querySelectorAll('.mes'))
+        .map(element => Number(element.getAttribute('mesid')))
+        .filter(Number.isFinite);
+
+    return ids.length ? Math.min(...ids) : Number.NaN;
+}
+
+/**
+ * Ensure a target message exists in the current DOM before focusing a match.
+ * @param {number} messageId Message id
+ * @returns {Promise<HTMLElement|null>} Rendered message element
+ */
+async function ensureMessageRendered(messageId) {
+    let messageElement = chat.querySelector(`.mes[mesid="${messageId}"]`);
+    if (messageElement instanceof HTMLElement) {
+        return messageElement;
+    }
+
+    const firstRenderedMessageId = getFirstRenderedMessageId();
+    if (Number.isFinite(firstRenderedMessageId) && messageId < firstRenderedMessageId && typeof showMoreMessages === 'function') {
+        await showMoreMessages(firstRenderedMessageId - messageId);
+    } else {
+        const context = SillyTavern.getContext();
+        if (typeof context.printMessages === 'function') {
+            await context.printMessages();
+        }
+    }
+
+    messageElement = chat.querySelector(`.mes[mesid="${messageId}"]`);
+    return messageElement instanceof HTMLElement ? messageElement : null;
+}
+
+/**
+ * Move the visible focus to the active search result.
+ * @param {object} [options] Options
+ * @param {boolean} [options.setDomFocus=false] Move browser focus to the mark element
+ * @returns {Promise<void>}
+ */
+async function focusCurrentMatch({ setDomFocus = false } = {}) {
+    const match = searchState.matches[searchState.currentIndex];
+    if (!match) {
+        updateSearchStatus();
+        return;
+    }
+
+    const messageElement = await ensureMessageRendered(match.messageId);
+    applySearchHighlights();
+
+    chat.querySelectorAll(`mark.${SEARCH_HIGHLIGHT_CLASS}.${SEARCH_CURRENT_CLASS}`).forEach(mark => {
+        mark.classList.remove(SEARCH_CURRENT_CLASS);
+    });
+
+    const currentMark = chat.querySelector(`mark.${SEARCH_HIGHLIGHT_CLASS}[data-topbar-search-index="${searchState.currentIndex}"]`);
+    if (currentMark instanceof HTMLElement) {
+        currentMark.classList.add(SEARCH_CURRENT_CLASS);
+        currentMark.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+        if (setDomFocus) {
+            currentMark.tabIndex = -1;
+            currentMark.focus({ preventScroll: true });
+        }
+    } else if (messageElement) {
+        messageElement.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+    }
+
+    updateSearchStatus();
+}
+
+/**
+ * Refresh matches and highlights from current popup controls.
+ * @param {object} [options] Options
+ * @param {boolean} [options.preserveIndex=false] Keep the current match index where possible
+ * @param {boolean} [options.setDomFocus=false] Move browser focus to the current match
+ * @returns {Promise<void>}
+ */
+async function refreshSearch({ preserveIndex = false, setDomFocus = false } = {}) {
+    const preferredIndex = preserveIndex ? searchState.currentIndex : 0;
+    readSearchControls();
+    rebuildSearchMatches(preferredIndex);
+    applySearchHighlights();
+    await focusCurrentMatch({ setDomFocus });
+}
+
+const searchRefreshDebounced = debounce(() => refreshSearch({ preserveIndex: false }), 250);
+
+/**
+ * Move to the previous or next match.
+ * @param {number} delta Direction delta
+ * @returns {Promise<void>}
+ */
+async function moveSearchMatch(delta) {
+    readSearchControls();
+    rebuildSearchMatches(searchState.currentIndex);
+
+    if (searchState.matches.length === 0) {
+        applySearchHighlights();
+        updateSearchStatus();
+        return;
+    }
+
+    searchState.currentIndex += delta;
+    if (searchState.currentIndex < 0) {
+        searchState.currentIndex = searchState.matches.length - 1;
+    }
+    if (searchState.currentIndex >= searchState.matches.length) {
+        searchState.currentIndex = 0;
+    }
+
+    await focusCurrentMatch({ setDomFocus: true });
+}
+
+/**
+ * Set a message's saved text and keep the selected swipe in sync.
+ * @param {object} message Chat message object
+ * @param {string} updatedText New message text
+ * @returns {void}
+ */
+function setSavedMessageText(message, updatedText) {
+    const previousText = message.mes;
+    message.mes = updatedText;
+
+    if (message.extra?.display_text === previousText) {
+        message.extra.display_text = updatedText;
+    }
+
+    const swipeId = Number(message.swipe_id);
+    if (Array.isArray(message.swipes) && Number.isInteger(swipeId) && swipeId >= 0 && swipeId < message.swipes.length) {
+        message.swipes[swipeId] = updatedText;
+    }
+}
+
+/**
+ * Emit standard message update events for integrations that listen to edits.
+ * @param {number} messageId Message id
+ * @returns {Promise<void>}
+ */
+async function emitMessageUpdated(messageId) {
+    if (event_types.MESSAGE_EDITED) {
+        await eventSource.emit(event_types.MESSAGE_EDITED, messageId);
+    }
+    if (event_types.MESSAGE_UPDATED) {
+        await eventSource.emit(event_types.MESSAGE_UPDATED, messageId);
+    }
+}
+
+/**
+ * Re-render a single message if it is currently displayed.
+ * @param {number} messageId Message id
+ * @param {object} message Chat message object
+ * @returns {void}
+ */
+function rerenderMessage(messageId, message) {
+    const context = SillyTavern.getContext();
+    if (typeof context.updateMessageBlock === 'function' && chat.querySelector(`.mes[mesid="${messageId}"]`)) {
+        context.updateMessageBlock(messageId, message);
+    }
+}
+
+/**
+ * Persist the current chat through SillyTavern's save path.
+ * @returns {Promise<void>}
+ */
+async function saveCurrentChat() {
+    const context = SillyTavern.getContext();
+    if (typeof context.saveChat === 'function') {
+        await context.saveChat();
+    }
+}
+
+/**
+ * Replace the currently selected search match and save the chat.
+ * @returns {Promise<void>}
+ */
+async function replaceCurrentSearchMatch() {
+    readSearchControls();
+    rebuildSearchMatches(searchState.currentIndex);
+
+    const match = searchState.matches[searchState.currentIndex];
+    if (!match) {
+        updateSearchStatus();
+        return;
+    }
+
+    const context = SillyTavern.getContext();
+    const message = context.chat?.[match.messageId];
+    const text = getMessageSearchText(message);
+    if (!message || !text) {
+        return;
+    }
+
+    const updatedText = `${text.slice(0, match.start)}${searchState.replace}${text.slice(match.end)}`;
+    setSavedMessageText(message, updatedText);
+    rerenderMessage(match.messageId, message);
+    await emitMessageUpdated(match.messageId);
+    await saveCurrentChat();
+    await refreshSearch({ preserveIndex: true, setDomFocus: true });
+}
+
+/**
+ * Replace all matches in the current chat and save once.
+ * @returns {Promise<void>}
+ */
+async function replaceAllSearchMatches() {
+    readSearchControls();
+    rebuildSearchMatches(0);
+
+    if (!searchState.matches.length) {
+        updateSearchStatus();
+        return;
+    }
+
+    const messageIds = [...new Set(searchState.matches.map(match => match.messageId))];
+    const confirmed = await Popup.show.confirm(
+        t`Replace all matches?`,
+        `${searchState.matches.length} matches in ${messageIds.length} messages will be replaced and saved to the current chat file.`,
+    );
+    if (!confirmed) {
+        return;
+    }
+
+    const context = SillyTavern.getContext();
+    const changedMessageIds = [];
+
+    for (const messageId of messageIds) {
+        const message = context.chat?.[messageId];
+        const text = getMessageSearchText(message);
+        const regex = buildSearchRegex();
+        if (!message || !text || !regex) {
+            continue;
+        }
+
+        const updatedText = text.replace(regex, () => searchState.replace);
+        if (updatedText === text) {
+            continue;
+        }
+
+        setSavedMessageText(message, updatedText);
+        rerenderMessage(messageId, message);
+        changedMessageIds.push(messageId);
+    }
+
+    for (const messageId of changedMessageIds) {
+        await emitMessageUpdated(messageId);
+    }
+
+    if (changedMessageIds.length) {
+        await saveCurrentChat();
+    }
+
+    await refreshSearch({ preserveIndex: false, setDomFocus: true });
+}
+
+/**
+ * Bind mouse and keyboard activation to a popup command button.
+ * @param {HTMLElement} element Command element
+ * @param {Function} handler Command handler
+ * @returns {void}
+ */
+function bindSearchCommand(element, handler) {
+    if (!element) {
+        return;
+    }
+
+    const runHandler = () => Promise.resolve(handler()).catch(error => console.error(t`Search command failed`, error));
+
+    element.tabIndex = 0;
+    element.addEventListener('click', () => {
+        if (element.getAttribute('aria-disabled') === 'true') {
+            return;
+        }
+        runHandler();
+    });
+    element.addEventListener('keydown', event => {
+        if (event.key !== 'Enter' && event.key !== ' ') {
+            return;
+        }
+        event.preventDefault();
+        if (element.getAttribute('aria-disabled') === 'true') {
+            return;
+        }
+        runHandler();
+    });
+}
+
+/**
+ * Open the search and replace popup.
+ * @returns {Promise<void>}
+ */
+async function onSearchClick() {
+    if (searchPopup?.dlg?.open) {
+        searchState.controls.queryInput?.focus();
+        return;
+    }
+
+    const content = document.createElement('div');
+    content.id = 'extensionTopBarSearchPopup';
+    content.innerHTML = `
+        <label class="extensionTopBarSearchField" for="extensionTopBarSearchQuery">
+            <span>Find</span>
+            <input id="extensionTopBarSearchQuery" class="text_pole" type="search" autocomplete="off" placeholder="Search...">
+        </label>
+        <label class="extensionTopBarSearchField" for="extensionTopBarSearchReplace">
+            <span>Replace</span>
+            <input id="extensionTopBarSearchReplace" class="text_pole" type="text" autocomplete="off" placeholder="Replace with...">
+        </label>
+        <div class="extensionTopBarSearchOptions">
+            <label class="checkbox_label" for="extensionTopBarSearchCaseSensitive">
+                <input id="extensionTopBarSearchCaseSensitive" type="checkbox">
+                <span>Case sensitive</span>
+            </label>
+            <label class="checkbox_label" for="extensionTopBarSearchWholeWord">
+                <input id="extensionTopBarSearchWholeWord" type="checkbox">
+                <span>Whole word</span>
+            </label>
+        </div>
+        <div class="extensionTopBarSearchActions">
+            <div id="extensionTopBarSearchPrevious" class="menu_button menu_button_icon" title="Previous match">
+                <i class="fa-solid fa-chevron-up"></i>
+                <span>Previous</span>
+            </div>
+            <div id="extensionTopBarSearchNext" class="menu_button menu_button_icon" title="Next match">
+                <i class="fa-solid fa-chevron-down"></i>
+                <span>Next</span>
+            </div>
+            <div id="extensionTopBarSearchReplaceCurrent" class="menu_button menu_button_icon" title="Replace current match">
+                <i class="fa-solid fa-rotate"></i>
+                <span>Replace</span>
+            </div>
+            <div id="extensionTopBarSearchReplaceAll" class="menu_button menu_button_icon" title="Replace all matches">
+                <i class="fa-solid fa-layer-group"></i>
+                <span>Replace all</span>
+            </div>
+        </div>
+        <small id="extensionTopBarSearchStatus" class="extensionTopBarSearchStatus">Enter a search term.</small>
+    `;
+
+    searchState.controls = {
+        queryInput: content.querySelector('#extensionTopBarSearchQuery'),
+        replaceInput: content.querySelector('#extensionTopBarSearchReplace'),
+        caseSensitiveInput: content.querySelector('#extensionTopBarSearchCaseSensitive'),
+        wholeWordInput: content.querySelector('#extensionTopBarSearchWholeWord'),
+        previousButton: content.querySelector('#extensionTopBarSearchPrevious'),
+        nextButton: content.querySelector('#extensionTopBarSearchNext'),
+        replaceCurrentButton: content.querySelector('#extensionTopBarSearchReplaceCurrent'),
+        replaceAllButton: content.querySelector('#extensionTopBarSearchReplaceAll'),
+        status: content.querySelector('#extensionTopBarSearchStatus'),
+    };
+
+    const {
+        queryInput,
+        replaceInput,
+        caseSensitiveInput,
+        wholeWordInput,
+    } = searchState.controls;
+
+    if (!(queryInput instanceof HTMLInputElement) ||
+        !(replaceInput instanceof HTMLInputElement) ||
+        !(caseSensitiveInput instanceof HTMLInputElement) ||
+        !(wholeWordInput instanceof HTMLInputElement)) {
+        console.warn(t`Search popup controls not found.`);
+        return;
+    }
+
+    queryInput.value = searchState.query;
+    replaceInput.value = searchState.replace;
+    caseSensitiveInput.checked = searchState.caseSensitive;
+    wholeWordInput.checked = searchState.wholeWord;
+
+    queryInput.addEventListener('input', searchRefreshDebounced);
+    queryInput.addEventListener('keydown', event => {
+        if (event.key !== 'Enter') {
+            return;
+        }
+
+        event.preventDefault();
+        Promise.resolve(moveSearchMatch(event.shiftKey ? -1 : 1)).catch(error => console.error(t`Search command failed`, error));
+    });
+    replaceInput.addEventListener('input', readSearchControls);
+    caseSensitiveInput.addEventListener('change', () => refreshSearch({ preserveIndex: false }));
+    wholeWordInput.addEventListener('change', () => refreshSearch({ preserveIndex: false }));
+    bindSearchCommand(searchState.controls.previousButton, () => moveSearchMatch(-1));
+    bindSearchCommand(searchState.controls.nextButton, () => moveSearchMatch(1));
+    bindSearchCommand(searchState.controls.replaceCurrentButton, replaceCurrentSearchMatch);
+    bindSearchCommand(searchState.controls.replaceAllButton, replaceAllSearchMatches);
+
+    searchPopup = new Popup(content, searchPopupType, '', {
+        wider: true,
+        leftAlign: true,
+        allowEscapeClose: true,
+        onOpen: async () => {
+            queryInput.focus();
+            await refreshSearch({ preserveIndex: true });
+        },
+        onClose: () => {
+            clearSearchHighlights();
+            searchPopup = null;
+            searchState.controls = {};
+        },
+    });
+
+    await searchPopup.show();
+}
+
 const updateStatusDebounced = debounce(onOnlineStatusChange, 1000);
 
 function addTopBar() {
     chatName.id = 'extensionTopBarChatName';
     topBar.id = 'extensionTopBar';
-    searchInput.id = 'extensionTopBarSearchInput';
-    searchInput.placeholder = 'Search...';
-    searchInput.classList.add('text_pole');
-    searchInput.type = 'search';
-    searchInput.addEventListener('input', () => searchDebounced(searchInput.value.trim()));
-    topBar.append(chatName, searchInput);
+    topBar.append(chatName);
     sheld.insertBefore(topBar, chat);
 }
 
@@ -285,7 +873,7 @@ function addIcons() {
             return;
         }
         if (icon.position === 'middle') {
-            topBar.insertBefore(iconElement, searchInput);
+            topBar.appendChild(iconElement);
             return;
         }
         if (icon.id === 'extensionTopBarRenameChat' && typeof renameChat !== 'function') {
