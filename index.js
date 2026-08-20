@@ -404,9 +404,9 @@ function updateSearchStatus() {
 
     if (controls.status) {
         if (!searchState.query) {
-            controls.status.textContent = t`Enter a search term.`;
+            controls.status.textContent = '0 / 0';
         } else if (!hasMatches) {
-            controls.status.textContent = t`No matches.`;
+            controls.status.textContent = '0 / 0';
         } else {
             controls.status.textContent = `${searchState.currentIndex + 1} / ${searchState.matches.length}`;
         }
@@ -760,18 +760,31 @@ function addSearchPanel() {
     searchPanel.innerHTML = `
         <div class="extensionTopBarSearchHeader">
             <strong>Search and replace</strong>
-            <div id="extensionTopBarSearchClose" class="menu_button menu_button_icon" title="Close search panel">
+            <div id="extensionTopBarSearchClose" class="menu_button menu_button_icon extensionTopBarSearchIconButton" title="Close search panel">
                 <i class="fa-solid fa-times"></i>
             </div>
         </div>
-        <label class="extensionTopBarSearchField" for="extensionTopBarSearchQuery">
-            <span>Find</span>
-            <input id="extensionTopBarSearchQuery" class="text_pole" type="search" autocomplete="off" placeholder="Search...">
-        </label>
-        <label class="extensionTopBarSearchField" for="extensionTopBarSearchReplace">
-            <span>Replace</span>
-            <input id="extensionTopBarSearchReplace" class="text_pole" type="text" autocomplete="off" placeholder="Replace with...">
-        </label>
+        <div class="extensionTopBarSearchRow extensionTopBarSearchFindRow">
+            <input id="extensionTopBarSearchQuery" class="text_pole" type="search" autocomplete="off" placeholder="Search..." aria-label="Find">
+            <small id="extensionTopBarSearchStatus" class="extensionTopBarSearchStatus">0 / 0</small>
+            <div id="extensionTopBarSearchPrevious" class="menu_button menu_button_icon extensionTopBarSearchIconButton" title="Previous match">
+                <i class="fa-solid fa-chevron-up"></i>
+            </div>
+            <div id="extensionTopBarSearchNext" class="menu_button menu_button_icon extensionTopBarSearchIconButton" title="Next match">
+                <i class="fa-solid fa-chevron-down"></i>
+            </div>
+        </div>
+        <div class="extensionTopBarSearchRow extensionTopBarSearchReplaceRow">
+            <input id="extensionTopBarSearchReplace" class="text_pole" type="text" autocomplete="off" placeholder="Replace with..." aria-label="Replace with">
+            <div id="extensionTopBarSearchReplaceCurrent" class="menu_button menu_button_icon extensionTopBarSearchTextButton" title="Replace current match">
+                <i class="fa-solid fa-rotate"></i>
+                <span>Replace</span>
+            </div>
+            <div id="extensionTopBarSearchReplaceAll" class="menu_button menu_button_icon extensionTopBarSearchTextButton extensionTopBarSearchDangerButton" title="Replace all matches">
+                <i class="fa-solid fa-layer-group"></i>
+                <span>All</span>
+            </div>
+        </div>
         <div class="extensionTopBarSearchOptions">
             <label class="checkbox_label" for="extensionTopBarSearchCaseSensitive">
                 <input id="extensionTopBarSearchCaseSensitive" type="checkbox">
@@ -782,25 +795,6 @@ function addSearchPanel() {
                 <span>Whole word</span>
             </label>
         </div>
-        <div class="extensionTopBarSearchActions">
-            <div id="extensionTopBarSearchPrevious" class="menu_button menu_button_icon" title="Previous match">
-                <i class="fa-solid fa-chevron-up"></i>
-                <span>Previous</span>
-            </div>
-            <div id="extensionTopBarSearchNext" class="menu_button menu_button_icon" title="Next match">
-                <i class="fa-solid fa-chevron-down"></i>
-                <span>Next</span>
-            </div>
-            <div id="extensionTopBarSearchReplaceCurrent" class="menu_button menu_button_icon" title="Replace current match">
-                <i class="fa-solid fa-rotate"></i>
-                <span>Replace</span>
-            </div>
-            <div id="extensionTopBarSearchReplaceAll" class="menu_button menu_button_icon" title="Replace all matches">
-                <i class="fa-solid fa-layer-group"></i>
-                <span>Replace all</span>
-            </div>
-        </div>
-        <small id="extensionTopBarSearchStatus" class="extensionTopBarSearchStatus">Enter a search term.</small>
     `;
 
     searchState.controls = {
