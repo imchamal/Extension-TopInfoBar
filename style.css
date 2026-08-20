@@ -296,19 +296,21 @@ body.movingUI #extensionTopBar {
 
 #extensionTopBarSearchPanel .extensionTopBarSearchReplaceMode {
     display: none;
-    flex-direction: column;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
     gap: 5px;
     padding-top: 4px;
 }
 
 #extensionTopBarSearchPanel .extensionTopBarSearchReplaceMode.visible {
-    display: flex;
+    display: grid;
 }
 
 #extensionTopBarSearchPanel .extensionTopBarSearchReplaceActions {
     display: flex;
     align-items: center;
     justify-content: flex-end;
+    flex-shrink: 0;
     gap: 6px;
 }
 
@@ -410,5 +412,10 @@ mark.extensionTopBarSearchHighlight.current {
 
     #extensionTopBarSearchPanel .extensionTopBarSearchStatus {
         min-width: 2.8em;
+    }
+
+    #extensionTopBarSearchPanel .extensionTopBarSearchTextButton,
+    #extensionTopBarSearchPanel .extensionTopBarSearchPrimaryButton {
+        padding: 0 8px;
     }
 }
