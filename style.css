@@ -321,8 +321,13 @@ body.movingUI #extensionTopBar {
     white-space: nowrap;
 }
 
+#extensionTopBarSearchPanel .extensionTopBarSearchTextButton {
+    border-color: transparent;
+}
+
 #extensionTopBarSearchPanel .extensionTopBarSearchPrimaryButton {
-    border-color: var(--SmartThemeBorderColor);
+    border-color: var(--SmartThemeQuoteColor);
+    color: var(--SmartThemeQuoteColor);
     font-weight: 600;
 }
 
@@ -331,7 +336,9 @@ body.movingUI #extensionTopBar {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     align-items: center;
     gap: 4px 14px;
-    padding-top: 4px;
+    margin-top: 2px;
+    padding-top: 8px;
+    border-top: 1px solid var(--SmartThemeBorderColor);
 }
 
 #extensionTopBarSearchPanel .extensionTopBarSearchOptionsMode.visible {
@@ -361,8 +368,9 @@ body.movingUI #extensionTopBar {
 }
 
 #extensionTopBarSearchPanel .extensionTopBarSearchIconButton.active {
+    border-color: var(--SmartThemeQuoteColor);
     color: var(--SmartThemeQuoteColor);
-    filter: brightness(1.25);
+    filter: brightness(1.15);
 }
 
 #extensionTopBarSearchPanel .extensionTopBarSearchStatus {
