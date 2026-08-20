@@ -327,7 +327,7 @@ body.movingUI #extensionTopBar {
 
 #extensionTopBarSearchPanel .extensionTopBarSearchPrimaryButton {
     border-color: var(--SmartThemeQuoteColor);
-    color: var(--SmartThemeQuoteColor);
+    background-color: var(--SmartThemeQuoteColor) !important;
     font-weight: 600;
 }
 
