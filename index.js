@@ -735,8 +735,23 @@ function bindSearchCommand(element, handler) {
 function closeSearchPanel() {
     readSearchControls();
     clearSearchHighlights();
+    setReplaceModeVisible(false);
     searchPanel.classList.remove('visible');
     document.getElementById('extensionTopBarSearch')?.classList.remove('active');
+}
+
+/**
+ * Toggle replace controls inside the compact search panel.
+ * @param {boolean} visible Replace mode visibility
+ * @returns {void}
+ */
+function setReplaceModeVisible(visible) {
+    const controls = searchState.controls;
+    controls.replaceMode?.classList.toggle('visible', visible);
+    controls.replaceToggleButton?.setAttribute('aria-expanded', String(visible));
+    controls.replaceToggleButton?.setAttribute('title', visible ? 'Hide replace' : 'Show replace');
+    controls.replaceToggleIcon?.classList.toggle('fa-angle-right', !visible);
+    controls.replaceToggleIcon?.classList.toggle('fa-angle-down', visible);
 }
 
 /**
@@ -759,30 +774,37 @@ function addSearchPanel() {
     searchPanel.id = 'extensionTopBarSearchPanel';
     searchPanel.innerHTML = `
         <div class="extensionTopBarSearchHeader">
-            <strong>Search and replace</strong>
+            <strong>Search</strong>
             <div id="extensionTopBarSearchClose" class="menu_button menu_button_icon extensionTopBarSearchIconButton" title="Close search panel">
                 <i class="fa-solid fa-times"></i>
             </div>
         </div>
-        <div class="extensionTopBarSearchRow extensionTopBarSearchFindRow">
-            <input id="extensionTopBarSearchQuery" class="text_pole" type="search" autocomplete="off" placeholder="Search..." aria-label="Find">
-            <small id="extensionTopBarSearchStatus" class="extensionTopBarSearchStatus">0 / 0</small>
-            <div id="extensionTopBarSearchPrevious" class="menu_button menu_button_icon extensionTopBarSearchIconButton" title="Previous match">
-                <i class="fa-solid fa-chevron-up"></i>
+        <div class="extensionTopBarSearchMain">
+            <div id="extensionTopBarSearchReplaceToggle" class="menu_button menu_button_icon extensionTopBarSearchIconButton extensionTopBarSearchReplaceToggle" title="Show replace" aria-expanded="false">
+                <i class="fa-solid fa-angle-right"></i>
             </div>
-            <div id="extensionTopBarSearchNext" class="menu_button menu_button_icon extensionTopBarSearchIconButton" title="Next match">
-                <i class="fa-solid fa-chevron-down"></i>
-            </div>
-        </div>
-        <div class="extensionTopBarSearchRow extensionTopBarSearchReplaceRow">
-            <input id="extensionTopBarSearchReplace" class="text_pole" type="text" autocomplete="off" placeholder="Replace with..." aria-label="Replace with">
-            <div id="extensionTopBarSearchReplaceCurrent" class="menu_button menu_button_icon extensionTopBarSearchTextButton" title="Replace current match">
-                <i class="fa-solid fa-rotate"></i>
-                <span>Replace</span>
-            </div>
-            <div id="extensionTopBarSearchReplaceAll" class="menu_button menu_button_icon extensionTopBarSearchTextButton extensionTopBarSearchDangerButton" title="Replace all matches">
-                <i class="fa-solid fa-layer-group"></i>
-                <span>All</span>
+            <div class="extensionTopBarSearchLines">
+                <div class="extensionTopBarSearchRow extensionTopBarSearchFindRow">
+                    <input id="extensionTopBarSearchQuery" class="text_pole" type="search" autocomplete="off" placeholder="Search..." aria-label="Find">
+                    <small id="extensionTopBarSearchStatus" class="extensionTopBarSearchStatus">0 / 0</small>
+                    <div id="extensionTopBarSearchPrevious" class="menu_button menu_button_icon extensionTopBarSearchIconButton" title="Previous match">
+                        <i class="fa-solid fa-chevron-up"></i>
+                    </div>
+                    <div id="extensionTopBarSearchNext" class="menu_button menu_button_icon extensionTopBarSearchIconButton" title="Next match">
+                        <i class="fa-solid fa-chevron-down"></i>
+                    </div>
+                </div>
+                <div id="extensionTopBarSearchReplaceMode" class="extensionTopBarSearchReplaceMode">
+                    <div class="extensionTopBarSearchRow extensionTopBarSearchReplaceRow">
+                        <input id="extensionTopBarSearchReplace" class="text_pole" type="text" autocomplete="off" placeholder="Replace with..." aria-label="Replace with">
+                        <div id="extensionTopBarSearchReplaceCurrent" class="menu_button menu_button_icon extensionTopBarSearchIconButton" title="Replace current match">
+                            <i class="fa-solid fa-right-left"></i>
+                        </div>
+                        <div id="extensionTopBarSearchReplaceAll" class="menu_button menu_button_icon extensionTopBarSearchIconButton extensionTopBarSearchDangerButton" title="Replace all matches">
+                            <i class="fa-solid fa-arrows-rotate"></i>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
         <div class="extensionTopBarSearchOptions">
@@ -802,6 +824,9 @@ function addSearchPanel() {
         replaceInput: searchPanel.querySelector('#extensionTopBarSearchReplace'),
         caseSensitiveInput: searchPanel.querySelector('#extensionTopBarSearchCaseSensitive'),
         wholeWordInput: searchPanel.querySelector('#extensionTopBarSearchWholeWord'),
+        replaceMode: searchPanel.querySelector('#extensionTopBarSearchReplaceMode'),
+        replaceToggleButton: searchPanel.querySelector('#extensionTopBarSearchReplaceToggle'),
+        replaceToggleIcon: searchPanel.querySelector('#extensionTopBarSearchReplaceToggle i'),
         closeButton: searchPanel.querySelector('#extensionTopBarSearchClose'),
         previousButton: searchPanel.querySelector('#extensionTopBarSearchPrevious'),
         nextButton: searchPanel.querySelector('#extensionTopBarSearchNext'),
@@ -849,6 +874,13 @@ function addSearchPanel() {
     });
     caseSensitiveInput.addEventListener('change', () => refreshSearch({ preserveIndex: false }));
     wholeWordInput.addEventListener('change', () => refreshSearch({ preserveIndex: false }));
+    bindSearchCommand(searchState.controls.replaceToggleButton, () => {
+        const isVisible = searchState.controls.replaceMode?.classList.contains('visible');
+        setReplaceModeVisible(!isVisible);
+        if (!isVisible) {
+            replaceInput.focus();
+        }
+    });
     bindSearchCommand(searchState.controls.closeButton, closeSearchPanel);
     bindSearchCommand(searchState.controls.previousButton, () => moveSearchMatch(-1));
     bindSearchCommand(searchState.controls.nextButton, () => moveSearchMatch(1));

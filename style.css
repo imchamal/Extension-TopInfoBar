@@ -270,11 +270,37 @@ body.movingUI #extensionTopBar {
     padding: 0;
 }
 
+#extensionTopBarSearchPanel .extensionTopBarSearchMain {
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr);
+    align-items: center;
+    gap: 6px;
+}
+
+#extensionTopBarSearchPanel .extensionTopBarSearchReplaceToggle {
+    align-self: center;
+}
+
+#extensionTopBarSearchPanel .extensionTopBarSearchLines {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
 #extensionTopBarSearchPanel #extensionTopBarSearchClose {
     width: 24px;
     min-width: 24px;
     height: 24px;
     min-height: 24px;
+}
+
+#extensionTopBarSearchPanel .extensionTopBarSearchReplaceMode {
+    display: none;
+}
+
+#extensionTopBarSearchPanel .extensionTopBarSearchReplaceMode.visible {
+    display: block;
 }
 
 #extensionTopBarSearchPanel .extensionTopBarSearchRow {
@@ -302,20 +328,7 @@ body.movingUI #extensionTopBar {
     align-items: center;
     gap: 4px 14px;
     padding-top: 2px;
-}
-
-#extensionTopBarSearchPanel .extensionTopBarSearchTextButton {
-    justify-content: center;
-    min-height: 30px;
-    margin: 0;
-    padding: 0 8px;
-    white-space: nowrap;
-}
-
-#extensionTopBarSearchPanel .extensionTopBarSearchTextButton span {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    margin-left: 34px;
 }
 
 #extensionTopBarSearchPanel .menu_button.disabled {
