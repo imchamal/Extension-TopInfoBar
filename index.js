@@ -63,6 +63,7 @@ const icons = [
         icon: 'fa-fw fa-solid fa-magnifying-glass',
         position: 'right',
         title: t`Search and replace`,
+        isTemporaryAllowed: true,
         onClick: onSearchClick,
     },
     {
