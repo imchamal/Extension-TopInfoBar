@@ -11,7 +11,7 @@ const {
 } = SillyTavern.getContext();
 import { addJQueryHighlight } from './jquery-highlight.js';
 import { getGroupPastChats } from '../../../group-chats.js';
-import { getPastCharacterChats, animation_duration, animation_easing, getGeneratingApi, showMoreMessages } from '../../../../script.js';
+import { getPastCharacterChats, animation_duration, animation_easing, getGeneratingApi } from '../../../../script.js';
 import { debounce, timestampToMoment, sortMoments, uuidv4, waitUntilCondition } from '../../../utils.js';
 import { debounce_timeout } from '../../../constants.js';
 import { t } from '../../../i18n.js';
@@ -165,8 +165,8 @@ function setChatName(name) {
 
     icons.forEach(icon => {
         const iconElement = document.getElementById(icon.id);
-        if (iconElement && !icon.isTemporaryAllowed) {
-            iconElement.classList.toggle('not-in-chat', isNotInChat);
+        if (iconElement) {
+            iconElement.classList.toggle('not-in-chat', isNotInChat && !icon.isTemporaryAllowed);
         }
     });
 
@@ -456,10 +456,17 @@ async function ensureMessageRendered(messageId) {
         return messageElement;
     }
 
+    let renderedMoreMessages = false;
     const firstRenderedMessageId = getFirstRenderedMessageId();
-    if (Number.isFinite(firstRenderedMessageId) && messageId < firstRenderedMessageId && typeof showMoreMessages === 'function') {
-        await showMoreMessages(firstRenderedMessageId - messageId);
-    } else {
+    if (Number.isFinite(firstRenderedMessageId) && messageId < firstRenderedMessageId) {
+        const module = await import('../../../../script.js');
+        if (typeof module.showMoreMessages === 'function') {
+            await module.showMoreMessages(firstRenderedMessageId - messageId);
+            renderedMoreMessages = true;
+        }
+    }
+
+    if (!renderedMoreMessages) {
         const context = SillyTavern.getContext();
         if (typeof context.printMessages === 'function') {
             await context.printMessages();
@@ -733,6 +740,18 @@ function closeSearchPanel() {
 }
 
 /**
+ * Position the floating search panel below the top bar.
+ * @returns {void}
+ */
+function positionSearchPanel() {
+    const topBarRect = topBar.getBoundingClientRect();
+    const right = Math.max(window.innerWidth - topBarRect.right + 10, 10);
+
+    searchPanel.style.top = `${topBarRect.bottom + 6}px`;
+    searchPanel.style.right = `${right}px`;
+}
+
+/**
  * Initialize the floating search panel.
  * @returns {void}
  */
@@ -843,7 +862,12 @@ function addSearchPanel() {
     bindSearchCommand(searchState.controls.replaceAllButton, replaceAllSearchMatches);
     updateSearchStatus();
 
-    topBar.appendChild(searchPanel);
+    document.body.appendChild(searchPanel);
+    window.addEventListener('resize', () => {
+        if (searchPanel.classList.contains('visible')) {
+            positionSearchPanel();
+        }
+    });
 }
 
 /**
@@ -857,6 +881,7 @@ async function onSearchClick() {
     }
 
     document.getElementById('extensionTopBarSearch')?.classList.add('active');
+    positionSearchPanel();
     searchPanel.classList.add('visible');
     searchState.controls.queryInput?.focus();
     await refreshSearch({ preserveIndex: true });
@@ -883,7 +908,7 @@ function addIcons() {
             if (iconElement.classList.contains('not-in-chat')) {
                 return;
             }
-            icon.onClick();
+            Promise.resolve(icon.onClick()).catch(error => console.error(t`Top bar button failed`, error));
         });
         if (icon.position === 'left') {
             topBar.insertBefore(iconElement, chatName);
