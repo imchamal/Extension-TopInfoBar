@@ -39,6 +39,8 @@ const searchState = {
     currentIndex: -1,
     caseSensitive: false,
     wholeWord: false,
+    regex: false,
+    regexError: null,
     controls: {},
 };
 
@@ -265,14 +267,22 @@ function escapeRegExp(value) {
  * @returns {RegExp|null} Search regex
  */
 function buildSearchRegex() {
+    searchState.regexError = null;
+
     if (!searchState.query) {
         return null;
     }
 
     const flags = searchState.caseSensitive ? 'g' : 'gi';
-    const source = escapeRegExp(searchState.query);
-    const pattern = searchState.wholeWord ? `\\b${source}\\b` : source;
-    return new RegExp(pattern, flags);
+    const source = searchState.regex ? searchState.query : escapeRegExp(searchState.query);
+    const pattern = searchState.wholeWord ? `\\b(?:${source})\\b` : source;
+
+    try {
+        return new RegExp(pattern, flags);
+    } catch (error) {
+        searchState.regexError = error;
+        return null;
+    }
 }
 
 /**
@@ -285,6 +295,7 @@ function readSearchControls() {
     searchState.replace = controls.replaceInput?.value ?? '';
     searchState.caseSensitive = Boolean(controls.caseSensitiveInput?.checked);
     searchState.wholeWord = Boolean(controls.wholeWordInput?.checked);
+    searchState.regex = Boolean(controls.regexInput?.checked);
 }
 
 /**
@@ -374,6 +385,77 @@ function syncSearchHighlightIndexes() {
 }
 
 /**
+ * Highlight matches in a rendered message element using the active regex.
+ * @param {Element} root Rendered message text element
+ * @param {RegExp} regex Search regex
+ * @returns {void}
+ */
+function highlightSearchMatches(root, regex) {
+    const textNodes = [];
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+        acceptNode: node => {
+            const parent = node.parentElement;
+            if (!node.nodeValue || !parent || parent.closest(`mark.${SEARCH_HIGHLIGHT_CLASS}`)) {
+                return NodeFilter.FILTER_REJECT;
+            }
+
+            if (/^(script|style)$/i.test(parent.tagName)) {
+                return NodeFilter.FILTER_REJECT;
+            }
+
+            return NodeFilter.FILTER_ACCEPT;
+        },
+    });
+
+    while (walker.nextNode()) {
+        textNodes.push(walker.currentNode);
+    }
+
+    for (const node of textNodes) {
+        const text = node.nodeValue;
+        const matches = [];
+        let match;
+
+        regex.lastIndex = 0;
+        while ((match = regex.exec(text)) !== null) {
+            if (!match[0]) {
+                regex.lastIndex += 1;
+                continue;
+            }
+
+            matches.push({
+                start: match.index,
+                end: match.index + match[0].length,
+            });
+        }
+
+        if (!matches.length || !node.parentNode) {
+            continue;
+        }
+
+        const fragment = document.createDocumentFragment();
+        let lastIndex = 0;
+        for (const item of matches) {
+            if (item.start > lastIndex) {
+                fragment.appendChild(document.createTextNode(text.slice(lastIndex, item.start)));
+            }
+
+            const mark = document.createElement(searchHighlightOptions.element);
+            mark.className = searchHighlightOptions.className;
+            mark.textContent = text.slice(item.start, item.end);
+            fragment.appendChild(mark);
+            lastIndex = item.end;
+        }
+
+        if (lastIndex < text.length) {
+            fragment.appendChild(document.createTextNode(text.slice(lastIndex)));
+        }
+
+        node.parentNode.replaceChild(fragment, node);
+    }
+}
+
+/**
  * Highlight matches in currently rendered messages.
  * @returns {void}
  */
@@ -384,12 +466,12 @@ function applySearchHighlights() {
         return;
     }
 
-    const messages = jQuery(chat).find('.mes_text');
-    messages.highlight(searchState.query, {
-        ...searchHighlightOptions,
-        caseSensitive: searchState.caseSensitive,
-        wordsOnly: searchState.wholeWord,
-    });
+    const regex = buildSearchRegex();
+    if (!regex) {
+        return;
+    }
+
+    chat.querySelectorAll('.mes_text').forEach(message => highlightSearchMatches(message, regex));
     syncSearchHighlightIndexes();
 }
 
@@ -400,10 +482,21 @@ function applySearchHighlights() {
 function updateSearchStatus() {
     const controls = searchState.controls;
     const hasMatches = searchState.matches.length > 0;
-    const canReplace = hasMatches && searchState.query.length > 0;
+    const canReplace = hasMatches && searchState.query.length > 0 && !searchState.regexError;
+    const hasQuery = searchState.query.length > 0;
+
+    searchPanel.classList.toggle('has-query', hasQuery);
+    if (!hasQuery) {
+        setReplaceModeVisible(false);
+        setSearchOptionsVisible(false);
+    }
 
     if (controls.status) {
-        if (!searchState.query) {
+        controls.status.classList.toggle('error', Boolean(searchState.regexError));
+
+        if (searchState.regexError) {
+            controls.status.textContent = 'Invalid';
+        } else if (!searchState.query) {
             controls.status.textContent = '0 / 0';
         } else if (!hasMatches) {
             controls.status.textContent = '0 / 0';
@@ -736,6 +829,7 @@ function closeSearchPanel() {
     readSearchControls();
     clearSearchHighlights();
     setReplaceModeVisible(false);
+    setSearchOptionsVisible(false);
     searchPanel.classList.remove('visible');
     document.getElementById('extensionTopBarSearch')?.classList.remove('active');
 }
@@ -750,8 +844,20 @@ function setReplaceModeVisible(visible) {
     controls.replaceMode?.classList.toggle('visible', visible);
     controls.replaceToggleButton?.setAttribute('aria-expanded', String(visible));
     controls.replaceToggleButton?.setAttribute('title', visible ? 'Hide replace' : 'Show replace');
-    controls.replaceToggleIcon?.classList.toggle('fa-angle-right', !visible);
-    controls.replaceToggleIcon?.classList.toggle('fa-angle-down', visible);
+    controls.replaceToggleButton?.classList.toggle('active', visible);
+}
+
+/**
+ * Toggle search option controls inside the compact search panel.
+ * @param {boolean} visible Option visibility
+ * @returns {void}
+ */
+function setSearchOptionsVisible(visible) {
+    const controls = searchState.controls;
+    controls.optionsMode?.classList.toggle('visible', visible);
+    controls.optionsToggleButton?.setAttribute('aria-expanded', String(visible));
+    controls.optionsToggleButton?.setAttribute('title', visible ? 'Hide search options' : 'Show search options');
+    controls.optionsToggleButton?.classList.toggle('active', visible);
 }
 
 /**
@@ -773,41 +879,35 @@ function positionSearchPanel() {
 function addSearchPanel() {
     searchPanel.id = 'extensionTopBarSearchPanel';
     searchPanel.innerHTML = `
-        <div class="extensionTopBarSearchHeader">
-            <strong>Search</strong>
-            <div id="extensionTopBarSearchClose" class="menu_button menu_button_icon extensionTopBarSearchIconButton" title="Close search panel">
-                <i class="fa-solid fa-times"></i>
-            </div>
-        </div>
-        <div class="extensionTopBarSearchMain">
-            <div id="extensionTopBarSearchReplaceToggle" class="menu_button menu_button_icon extensionTopBarSearchIconButton extensionTopBarSearchReplaceToggle" title="Show replace" aria-expanded="false">
-                <i class="fa-solid fa-angle-right"></i>
-            </div>
-            <div class="extensionTopBarSearchLines">
-                <div class="extensionTopBarSearchRow extensionTopBarSearchFindRow">
-                    <input id="extensionTopBarSearchQuery" class="text_pole" type="search" autocomplete="off" placeholder="Search..." aria-label="Find">
-                    <small id="extensionTopBarSearchStatus" class="extensionTopBarSearchStatus">0 / 0</small>
-                    <div id="extensionTopBarSearchPrevious" class="menu_button menu_button_icon extensionTopBarSearchIconButton" title="Previous match">
-                        <i class="fa-solid fa-chevron-up"></i>
-                    </div>
-                    <div id="extensionTopBarSearchNext" class="menu_button menu_button_icon extensionTopBarSearchIconButton" title="Next match">
-                        <i class="fa-solid fa-chevron-down"></i>
-                    </div>
+        <div class="extensionTopBarSearchBar">
+            <input id="extensionTopBarSearchQuery" class="text_pole" type="search" autocomplete="off" placeholder="Search..." aria-label="Find">
+            <div class="extensionTopBarSearchControls">
+                <small id="extensionTopBarSearchStatus" class="extensionTopBarSearchStatus">0 / 0</small>
+                <div id="extensionTopBarSearchPrevious" class="menu_button menu_button_icon extensionTopBarSearchIconButton" title="Previous match">
+                    <i class="fa-solid fa-chevron-up"></i>
                 </div>
-                <div id="extensionTopBarSearchReplaceMode" class="extensionTopBarSearchReplaceMode">
-                    <div class="extensionTopBarSearchRow extensionTopBarSearchReplaceRow">
-                        <input id="extensionTopBarSearchReplace" class="text_pole" type="text" autocomplete="off" placeholder="Replace with..." aria-label="Replace with">
-                        <div id="extensionTopBarSearchReplaceCurrent" class="menu_button menu_button_icon extensionTopBarSearchIconButton" title="Replace current match">
-                            <i class="fa-solid fa-right-left"></i>
-                        </div>
-                        <div id="extensionTopBarSearchReplaceAll" class="menu_button menu_button_icon extensionTopBarSearchIconButton extensionTopBarSearchDangerButton" title="Replace all matches">
-                            <i class="fa-solid fa-arrows-rotate"></i>
-                        </div>
-                    </div>
+                <div id="extensionTopBarSearchNext" class="menu_button menu_button_icon extensionTopBarSearchIconButton" title="Next match">
+                    <i class="fa-solid fa-chevron-down"></i>
+                </div>
+                <div id="extensionTopBarSearchReplaceToggle" class="menu_button menu_button_icon extensionTopBarSearchIconButton" title="Show replace" aria-expanded="false">
+                    <i class="fa-solid fa-arrows-rotate"></i>
+                </div>
+                <div id="extensionTopBarSearchOptionsToggle" class="menu_button menu_button_icon extensionTopBarSearchIconButton" title="Show search options" aria-expanded="false">
+                    <i class="fa-solid fa-gear"></i>
+                </div>
+                <div id="extensionTopBarSearchClose" class="menu_button menu_button_icon extensionTopBarSearchIconButton" title="Close search panel">
+                    <i class="fa-solid fa-times"></i>
                 </div>
             </div>
         </div>
-        <div class="extensionTopBarSearchOptions">
+        <div id="extensionTopBarSearchReplaceMode" class="extensionTopBarSearchReplaceMode">
+            <input id="extensionTopBarSearchReplace" class="text_pole" type="text" autocomplete="off" placeholder="Replace with..." aria-label="Replace with">
+            <div class="extensionTopBarSearchReplaceActions">
+                <div id="extensionTopBarSearchReplaceAll" class="menu_button extensionTopBarSearchTextButton" title="Replace all matches">Replace all</div>
+                <div id="extensionTopBarSearchReplaceCurrent" class="menu_button extensionTopBarSearchPrimaryButton" title="Replace current match">Replace</div>
+            </div>
+        </div>
+        <div id="extensionTopBarSearchOptionsMode" class="extensionTopBarSearchOptionsMode">
             <label class="checkbox_label" for="extensionTopBarSearchCaseSensitive">
                 <input id="extensionTopBarSearchCaseSensitive" type="checkbox">
                 <span>Case sensitive</span>
@@ -815,6 +915,10 @@ function addSearchPanel() {
             <label class="checkbox_label" for="extensionTopBarSearchWholeWord">
                 <input id="extensionTopBarSearchWholeWord" type="checkbox">
                 <span>Whole word</span>
+            </label>
+            <label class="checkbox_label" for="extensionTopBarSearchRegex">
+                <input id="extensionTopBarSearchRegex" type="checkbox">
+                <span>Regex</span>
             </label>
         </div>
     `;
@@ -824,9 +928,11 @@ function addSearchPanel() {
         replaceInput: searchPanel.querySelector('#extensionTopBarSearchReplace'),
         caseSensitiveInput: searchPanel.querySelector('#extensionTopBarSearchCaseSensitive'),
         wholeWordInput: searchPanel.querySelector('#extensionTopBarSearchWholeWord'),
+        regexInput: searchPanel.querySelector('#extensionTopBarSearchRegex'),
         replaceMode: searchPanel.querySelector('#extensionTopBarSearchReplaceMode'),
         replaceToggleButton: searchPanel.querySelector('#extensionTopBarSearchReplaceToggle'),
-        replaceToggleIcon: searchPanel.querySelector('#extensionTopBarSearchReplaceToggle i'),
+        optionsMode: searchPanel.querySelector('#extensionTopBarSearchOptionsMode'),
+        optionsToggleButton: searchPanel.querySelector('#extensionTopBarSearchOptionsToggle'),
         closeButton: searchPanel.querySelector('#extensionTopBarSearchClose'),
         previousButton: searchPanel.querySelector('#extensionTopBarSearchPrevious'),
         nextButton: searchPanel.querySelector('#extensionTopBarSearchNext'),
@@ -840,12 +946,14 @@ function addSearchPanel() {
         replaceInput,
         caseSensitiveInput,
         wholeWordInput,
+        regexInput,
     } = searchState.controls;
 
     if (!(queryInput instanceof HTMLInputElement) ||
         !(replaceInput instanceof HTMLInputElement) ||
         !(caseSensitiveInput instanceof HTMLInputElement) ||
-        !(wholeWordInput instanceof HTMLInputElement)) {
+        !(wholeWordInput instanceof HTMLInputElement) ||
+        !(regexInput instanceof HTMLInputElement)) {
         console.warn(t`Search panel controls not found.`);
         return;
     }
@@ -874,12 +982,17 @@ function addSearchPanel() {
     });
     caseSensitiveInput.addEventListener('change', () => refreshSearch({ preserveIndex: false }));
     wholeWordInput.addEventListener('change', () => refreshSearch({ preserveIndex: false }));
+    regexInput.addEventListener('change', () => refreshSearch({ preserveIndex: false }));
     bindSearchCommand(searchState.controls.replaceToggleButton, () => {
         const isVisible = searchState.controls.replaceMode?.classList.contains('visible');
         setReplaceModeVisible(!isVisible);
         if (!isVisible) {
             replaceInput.focus();
         }
+    });
+    bindSearchCommand(searchState.controls.optionsToggleButton, () => {
+        const isVisible = searchState.controls.optionsMode?.classList.contains('visible');
+        setSearchOptionsVisible(!isVisible);
     });
     bindSearchCommand(searchState.controls.closeButton, closeSearchPanel);
     bindSearchCommand(searchState.controls.previousButton, () => moveSearchMatch(-1));

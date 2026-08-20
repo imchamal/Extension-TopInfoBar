@@ -229,106 +229,108 @@ body.movingUI #extensionTopBar {
     z-index: 10050;
     display: none;
     flex-direction: column;
-    gap: 6px;
+    gap: 5px;
     align-items: stretch;
-    width: min(430px, calc(100vw - 16px));
-    padding: 8px;
+    width: min(520px, calc(100vw - 16px));
+    padding: 6px;
     border: 1px solid var(--SmartThemeBorderColor);
     border-radius: 8px;
     background-color: var(--SmartThemeBlurTintColor);
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
-    font-size: calc(var(--mainFontSize) * 0.85);
+    font-size: calc(var(--mainFontSize) * 0.82);
 }
 
 #extensionTopBarSearchPanel.visible {
     display: flex;
 }
 
-#extensionTopBarSearchPanel .extensionTopBarSearchHeader {
-    display: flex;
+#extensionTopBarSearchPanel .extensionTopBarSearchBar {
+    display: grid;
+    grid-template-columns: minmax(120px, 1fr) auto;
     align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    min-height: 24px;
+    gap: 4px;
 }
 
-#extensionTopBarSearchPanel .extensionTopBarSearchHeader strong {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-size: calc(var(--mainFontSize) * 0.95);
+#extensionTopBarSearchPanel .extensionTopBarSearchBar input,
+#extensionTopBarSearchPanel .extensionTopBarSearchReplaceMode input {
+    width: 100%;
+    min-width: 0;
+    height: 28px;
+    margin: 0;
+    font-size: calc(var(--mainFontSize) * 0.86);
+}
+
+#extensionTopBarSearchPanel .extensionTopBarSearchControls {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex-shrink: 0;
 }
 
 #extensionTopBarSearchPanel .extensionTopBarSearchIconButton {
     flex-shrink: 0;
     justify-content: center;
-    width: 28px;
-    min-width: 28px;
-    height: 28px;
-    min-height: 28px;
+    width: 26px;
+    min-width: 26px;
+    height: 26px;
+    min-height: 26px;
     margin: 0;
     padding: 0;
+    border-color: transparent;
+    background: transparent;
+    box-shadow: none;
 }
 
-#extensionTopBarSearchPanel .extensionTopBarSearchMain {
-    display: grid;
-    grid-template-columns: 28px minmax(0, 1fr);
-    align-items: center;
-    gap: 6px;
-}
-
-#extensionTopBarSearchPanel .extensionTopBarSearchReplaceToggle {
-    align-self: center;
-}
-
-#extensionTopBarSearchPanel .extensionTopBarSearchLines {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    min-width: 0;
-}
-
-#extensionTopBarSearchPanel #extensionTopBarSearchClose {
-    width: 24px;
-    min-width: 24px;
-    height: 24px;
-    min-height: 24px;
+#extensionTopBarSearchPanel:not(.has-query) .extensionTopBarSearchStatus,
+#extensionTopBarSearchPanel:not(.has-query) #extensionTopBarSearchPrevious,
+#extensionTopBarSearchPanel:not(.has-query) #extensionTopBarSearchNext,
+#extensionTopBarSearchPanel:not(.has-query) #extensionTopBarSearchReplaceToggle,
+#extensionTopBarSearchPanel:not(.has-query) #extensionTopBarSearchOptionsToggle {
+    display: none;
 }
 
 #extensionTopBarSearchPanel .extensionTopBarSearchReplaceMode {
     display: none;
+    flex-direction: column;
+    gap: 5px;
+    padding-top: 4px;
 }
 
 #extensionTopBarSearchPanel .extensionTopBarSearchReplaceMode.visible {
-    display: block;
+    display: flex;
 }
 
-#extensionTopBarSearchPanel .extensionTopBarSearchRow {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto auto;
+#extensionTopBarSearchPanel .extensionTopBarSearchReplaceActions {
+    display: flex;
     align-items: center;
+    justify-content: flex-end;
     gap: 6px;
 }
 
-#extensionTopBarSearchPanel .extensionTopBarSearchReplaceRow {
-    grid-template-columns: minmax(0, 1fr) auto auto;
-}
-
-#extensionTopBarSearchPanel .extensionTopBarSearchRow input {
-    width: 100%;
-    min-width: 0;
-    height: 30px;
+#extensionTopBarSearchPanel .extensionTopBarSearchTextButton,
+#extensionTopBarSearchPanel .extensionTopBarSearchPrimaryButton {
+    justify-content: center;
+    min-height: 28px;
     margin: 0;
-    font-size: calc(var(--mainFontSize) * 0.9);
+    padding: 0 10px;
+    white-space: nowrap;
 }
 
-#extensionTopBarSearchPanel .extensionTopBarSearchOptions {
-    display: flex;
+#extensionTopBarSearchPanel .extensionTopBarSearchPrimaryButton {
+    border-color: var(--SmartThemeBorderColor);
+    background-color: var(--cobalt30a);
+}
+
+#extensionTopBarSearchPanel .extensionTopBarSearchOptionsMode {
+    display: none;
     flex-wrap: wrap;
     align-items: center;
     gap: 4px 14px;
-    padding-top: 2px;
-    margin-left: 34px;
+    padding-top: 4px;
+}
+
+#extensionTopBarSearchPanel .extensionTopBarSearchOptionsMode.visible {
+    display: flex;
 }
 
 #extensionTopBarSearchPanel .menu_button.disabled {
@@ -341,6 +343,11 @@ body.movingUI #extensionTopBar {
     background-color: rgba(170, 92, 55, 0.12);
 }
 
+#extensionTopBarSearchPanel .extensionTopBarSearchIconButton.active {
+    color: var(--SmartThemeQuoteColor);
+    filter: brightness(1.25);
+}
+
 #extensionTopBarSearchPanel .extensionTopBarSearchStatus {
     display: inline-flex;
     align-items: center;
@@ -348,6 +355,10 @@ body.movingUI #extensionTopBar {
     min-width: 3.2em;
     opacity: 0.75;
     white-space: nowrap;
+}
+
+#extensionTopBarSearchPanel .extensionTopBarSearchStatus.error {
+    color: #c0392b;
 }
 
 mark.extensionTopBarSearchHighlight {
@@ -368,11 +379,11 @@ mark.extensionTopBarSearchHighlight.current {
         max-width: calc(100vw - 12px);
     }
 
-    #extensionTopBarSearchPanel .extensionTopBarSearchRow {
-        grid-template-columns: minmax(0, 1fr) 3em 28px 28px;
+    #extensionTopBarSearchPanel .extensionTopBarSearchBar {
+        grid-template-columns: minmax(0, 1fr) auto;
     }
 
-    #extensionTopBarSearchPanel .extensionTopBarSearchReplaceRow {
-        grid-template-columns: minmax(0, 1fr) auto auto;
+    #extensionTopBarSearchPanel .extensionTopBarSearchStatus {
+        min-width: 2.8em;
     }
 }
