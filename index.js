@@ -34,6 +34,7 @@ const searchHighlightOptions = { element: 'mark', className: SEARCH_HIGHLIGHT_CL
 const searchPanel = document.createElement('div');
 const searchState = {
     query: '',
+    pendingQuery: '',
     replace: '',
     matches: [],
     currentIndex: -1,
@@ -291,11 +292,36 @@ function buildSearchRegex() {
  */
 function readSearchControls() {
     const controls = searchState.controls;
-    searchState.query = controls.queryInput?.value.trim() ?? '';
     searchState.replace = controls.replaceInput?.value ?? '';
     searchState.caseSensitive = Boolean(controls.caseSensitiveInput?.checked);
     searchState.wholeWord = Boolean(controls.wholeWordInput?.checked);
     searchState.regex = Boolean(controls.regexInput?.checked);
+}
+
+/**
+ * Read only the search query text into the active search state.
+ * @returns {void}
+ */
+function readSearchQuery() {
+    searchState.query = searchState.controls.queryInput?.value.trim() ?? '';
+    searchState.pendingQuery = searchState.query;
+}
+
+/**
+ * Update compact search bar visibility before an Enter search is run.
+ * @returns {void}
+ */
+function updatePendingSearchQuery() {
+    searchState.pendingQuery = searchState.controls.queryInput?.value.trim() ?? '';
+    searchPanel.classList.toggle('has-query', searchState.pendingQuery.length > 0);
+
+    if (searchState.pendingQuery !== searchState.query) {
+        searchState.matches = [];
+        searchState.currentIndex = -1;
+        searchState.regexError = null;
+        clearSearchHighlights();
+        updateSearchStatus();
+    }
 }
 
 /**
@@ -481,12 +507,13 @@ function applySearchHighlights() {
  */
 function updateSearchStatus() {
     const controls = searchState.controls;
-    const hasMatches = searchState.matches.length > 0;
-    const canReplace = hasMatches && searchState.query.length > 0 && !searchState.regexError;
-    const hasQuery = searchState.query.length > 0;
+    const hasPendingQuery = searchState.pendingQuery.length > 0;
+    const hasCommittedQuery = searchState.query.length > 0 && searchState.pendingQuery === searchState.query;
+    const hasMatches = hasCommittedQuery && searchState.matches.length > 0;
+    const canReplace = hasMatches && !searchState.regexError;
 
-    searchPanel.classList.toggle('has-query', hasQuery);
-    if (!hasQuery) {
+    searchPanel.classList.toggle('has-query', hasPendingQuery);
+    if (!hasPendingQuery) {
         setReplaceModeVisible(false);
         setSearchOptionsVisible(false);
     }
@@ -495,8 +522,8 @@ function updateSearchStatus() {
         controls.status.classList.toggle('error', Boolean(searchState.regexError));
 
         if (searchState.regexError) {
-            controls.status.textContent = 'Invalid';
-        } else if (!searchState.query) {
+            controls.status.textContent = t`Invalid`;
+        } else if (!hasCommittedQuery) {
             controls.status.textContent = '0 / 0';
         } else if (!hasMatches) {
             controls.status.textContent = '0 / 0';
@@ -612,15 +639,21 @@ async function focusCurrentMatch({ setDomFocus = false } = {}) {
  * @param {boolean} [options.setDomFocus=false] Move browser focus to the current match
  * @returns {Promise<void>}
  */
-async function refreshSearch({ preserveIndex = false, setDomFocus = false } = {}) {
+async function refreshSearch({ preserveIndex = false, setDomFocus = false, commitQuery = true } = {}) {
     const preferredIndex = preserveIndex ? searchState.currentIndex : 0;
     readSearchControls();
+    if (commitQuery) {
+        readSearchQuery();
+    } else {
+        updatePendingSearchQuery();
+        if (searchState.pendingQuery !== searchState.query) {
+            return;
+        }
+    }
     rebuildSearchMatches(preferredIndex);
     applySearchHighlights();
     await focusCurrentMatch({ setDomFocus });
 }
-
-const searchRefreshDebounced = debounce(() => refreshSearch({ preserveIndex: false }), 250);
 
 /**
  * Move to the previous or next match.
@@ -751,7 +784,7 @@ async function replaceAllSearchMatches() {
     const messageIds = [...new Set(searchState.matches.map(match => match.messageId))];
     const confirmed = await Popup.show.confirm(
         t`Replace all matches?`,
-        `${searchState.matches.length} matches in ${messageIds.length} messages will be replaced and saved to the current chat file.`,
+        t`${searchState.matches.length} matches in ${messageIds.length} messages will be replaced and saved to the current chat file.`,
     );
     if (!confirmed) {
         return;
@@ -843,7 +876,7 @@ function setReplaceModeVisible(visible) {
     const controls = searchState.controls;
     controls.replaceMode?.classList.toggle('visible', visible);
     controls.replaceToggleButton?.setAttribute('aria-expanded', String(visible));
-    controls.replaceToggleButton?.setAttribute('title', visible ? 'Hide replace' : 'Show replace');
+    controls.replaceToggleButton?.setAttribute('title', visible ? t`Hide replace` : t`Show replace`);
     controls.replaceToggleButton?.classList.toggle('active', visible);
 }
 
@@ -856,7 +889,7 @@ function setSearchOptionsVisible(visible) {
     const controls = searchState.controls;
     controls.optionsMode?.classList.toggle('visible', visible);
     controls.optionsToggleButton?.setAttribute('aria-expanded', String(visible));
-    controls.optionsToggleButton?.setAttribute('title', visible ? 'Hide search options' : 'Show search options');
+    controls.optionsToggleButton?.setAttribute('title', visible ? t`Hide search options` : t`Show search options`);
     controls.optionsToggleButton?.classList.toggle('active', visible);
 }
 
@@ -880,45 +913,45 @@ function addSearchPanel() {
     searchPanel.id = 'extensionTopBarSearchPanel';
     searchPanel.innerHTML = `
         <div class="extensionTopBarSearchBar">
-            <input id="extensionTopBarSearchQuery" class="text_pole" type="search" autocomplete="off" placeholder="Search..." aria-label="Find">
+            <input id="extensionTopBarSearchQuery" class="text_pole" type="search" autocomplete="off" placeholder="${t`Search...`}" aria-label="${t`Find`}">
             <div class="extensionTopBarSearchControls">
                 <small id="extensionTopBarSearchStatus" class="extensionTopBarSearchStatus">0 / 0</small>
-                <div id="extensionTopBarSearchPrevious" class="menu_button menu_button_icon extensionTopBarSearchIconButton" title="Previous match">
+                <div id="extensionTopBarSearchPrevious" class="menu_button menu_button_icon extensionTopBarSearchIconButton" title="${t`Previous match`}">
                     <i class="fa-solid fa-chevron-up"></i>
                 </div>
-                <div id="extensionTopBarSearchNext" class="menu_button menu_button_icon extensionTopBarSearchIconButton" title="Next match">
+                <div id="extensionTopBarSearchNext" class="menu_button menu_button_icon extensionTopBarSearchIconButton" title="${t`Next match`}">
                     <i class="fa-solid fa-chevron-down"></i>
                 </div>
-                <div id="extensionTopBarSearchReplaceToggle" class="menu_button menu_button_icon extensionTopBarSearchIconButton" title="Show replace" aria-expanded="false">
+                <div id="extensionTopBarSearchReplaceToggle" class="menu_button menu_button_icon extensionTopBarSearchIconButton" title="${t`Show replace`}" aria-expanded="false">
                     <i class="fa-solid fa-arrows-rotate"></i>
                 </div>
-                <div id="extensionTopBarSearchOptionsToggle" class="menu_button menu_button_icon extensionTopBarSearchIconButton" title="Show search options" aria-expanded="false">
+                <div id="extensionTopBarSearchOptionsToggle" class="menu_button menu_button_icon extensionTopBarSearchIconButton" title="${t`Show search options`}" aria-expanded="false">
                     <i class="fa-solid fa-gear"></i>
                 </div>
-                <div id="extensionTopBarSearchClose" class="menu_button menu_button_icon extensionTopBarSearchIconButton" title="Close search panel">
+                <div id="extensionTopBarSearchClose" class="menu_button menu_button_icon extensionTopBarSearchIconButton" title="${t`Close search panel`}">
                     <i class="fa-solid fa-times"></i>
                 </div>
             </div>
         </div>
         <div id="extensionTopBarSearchReplaceMode" class="extensionTopBarSearchReplaceMode">
-            <input id="extensionTopBarSearchReplace" class="text_pole" type="text" autocomplete="off" placeholder="Replace with..." aria-label="Replace with">
+            <input id="extensionTopBarSearchReplace" class="text_pole" type="text" autocomplete="off" placeholder="${t`Replace with...`}" aria-label="${t`Replace with`}">
             <div class="extensionTopBarSearchReplaceActions">
-                <div id="extensionTopBarSearchReplaceAll" class="menu_button extensionTopBarSearchTextButton" title="Replace all matches">Replace all</div>
-                <div id="extensionTopBarSearchReplaceCurrent" class="menu_button extensionTopBarSearchPrimaryButton" title="Replace current match">Replace</div>
+                <div id="extensionTopBarSearchReplaceAll" class="menu_button extensionTopBarSearchTextButton" title="${t`Replace all matches`}">${t`Replace all`}</div>
+                <div id="extensionTopBarSearchReplaceCurrent" class="menu_button extensionTopBarSearchPrimaryButton" title="${t`Replace current match`}">${t`Replace`}</div>
             </div>
         </div>
         <div id="extensionTopBarSearchOptionsMode" class="extensionTopBarSearchOptionsMode">
             <label class="checkbox_label" for="extensionTopBarSearchCaseSensitive">
                 <input id="extensionTopBarSearchCaseSensitive" type="checkbox">
-                <span>Case sensitive</span>
+                <span>${t`Case sensitive`}</span>
             </label>
             <label class="checkbox_label" for="extensionTopBarSearchWholeWord">
                 <input id="extensionTopBarSearchWholeWord" type="checkbox">
-                <span>Whole word</span>
+                <span>${t`Whole word`}</span>
             </label>
             <label class="checkbox_label" for="extensionTopBarSearchRegex">
                 <input id="extensionTopBarSearchRegex" type="checkbox">
-                <span>Regex</span>
+                <span>${t`Regex`}</span>
             </label>
         </div>
     `;
@@ -958,7 +991,7 @@ function addSearchPanel() {
         return;
     }
 
-    queryInput.addEventListener('input', searchRefreshDebounced);
+    queryInput.addEventListener('input', updatePendingSearchQuery);
     queryInput.addEventListener('keydown', event => {
         if (event.key === 'Escape') {
             event.preventDefault();
@@ -971,7 +1004,12 @@ function addSearchPanel() {
         }
 
         event.preventDefault();
-        Promise.resolve(moveSearchMatch(event.shiftKey ? -1 : 1)).catch(error => console.error(t`Search command failed`, error));
+        const isCurrentSearch = searchState.pendingQuery === searchState.query && searchState.matches.length > 0;
+        const command = isCurrentSearch
+            ? moveSearchMatch(event.shiftKey ? -1 : 1)
+            : refreshSearch({ preserveIndex: false, setDomFocus: true });
+        Promise.resolve(command)
+            .catch(error => console.error(t`Search command failed`, error));
     });
     replaceInput.addEventListener('input', readSearchControls);
     replaceInput.addEventListener('keydown', event => {
@@ -980,9 +1018,9 @@ function addSearchPanel() {
             closeSearchPanel();
         }
     });
-    caseSensitiveInput.addEventListener('change', () => refreshSearch({ preserveIndex: false }));
-    wholeWordInput.addEventListener('change', () => refreshSearch({ preserveIndex: false }));
-    regexInput.addEventListener('change', () => refreshSearch({ preserveIndex: false }));
+    caseSensitiveInput.addEventListener('change', () => refreshSearch({ preserveIndex: false, commitQuery: false }));
+    wholeWordInput.addEventListener('change', () => refreshSearch({ preserveIndex: false, commitQuery: false }));
+    regexInput.addEventListener('change', () => refreshSearch({ preserveIndex: false, commitQuery: false }));
     bindSearchCommand(searchState.controls.replaceToggleButton, () => {
         const isVisible = searchState.controls.replaceMode?.classList.contains('visible');
         setReplaceModeVisible(!isVisible);
@@ -1022,8 +1060,8 @@ async function onSearchClick() {
     document.getElementById('extensionTopBarSearch')?.classList.add('active');
     positionSearchPanel();
     searchPanel.classList.add('visible');
+    updatePendingSearchQuery();
     searchState.controls.queryInput?.focus();
-    await refreshSearch({ preserveIndex: true });
 }
 
 const updateStatusDebounced = debounce(onOnlineStatusChange, 1000);

@@ -231,7 +231,7 @@ body.movingUI #extensionTopBar {
     flex-direction: column;
     gap: 5px;
     align-items: stretch;
-    width: min(520px, calc(100vw - 16px));
+    width: min(380px, calc(100vw - 12px));
     padding: 6px;
     border: 1px solid var(--SmartThemeBorderColor);
     border-radius: 8px;
@@ -265,6 +265,11 @@ body.movingUI #extensionTopBar {
     align-items: center;
     gap: 2px;
     flex-shrink: 0;
+}
+
+#extensionTopBarSearchPanel .menu_button {
+    background: transparent !important;
+    box-shadow: none;
 }
 
 #extensionTopBarSearchPanel .extensionTopBarSearchIconButton {
@@ -318,19 +323,32 @@ body.movingUI #extensionTopBar {
 
 #extensionTopBarSearchPanel .extensionTopBarSearchPrimaryButton {
     border-color: var(--SmartThemeBorderColor);
-    background-color: var(--cobalt30a);
+    font-weight: 600;
 }
 
 #extensionTopBarSearchPanel .extensionTopBarSearchOptionsMode {
     display: none;
-    flex-wrap: wrap;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     align-items: center;
     gap: 4px 14px;
     padding-top: 4px;
 }
 
 #extensionTopBarSearchPanel .extensionTopBarSearchOptionsMode.visible {
-    display: flex;
+    display: grid;
+}
+
+#extensionTopBarSearchPanel .extensionTopBarSearchOptionsMode .checkbox_label {
+    min-width: 0;
+    margin: 0;
+    justify-content: center;
+    white-space: nowrap;
+}
+
+#extensionTopBarSearchPanel .extensionTopBarSearchOptionsMode .checkbox_label span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 #extensionTopBarSearchPanel .menu_button.disabled {
@@ -340,7 +358,6 @@ body.movingUI #extensionTopBar {
 
 #extensionTopBarSearchPanel .extensionTopBarSearchDangerButton {
     border-color: rgba(170, 92, 55, 0.7);
-    background-color: rgba(170, 92, 55, 0.12);
 }
 
 #extensionTopBarSearchPanel .extensionTopBarSearchIconButton.active {

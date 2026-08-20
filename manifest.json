@@ -10,6 +10,7 @@
     "homePage": "https://github.com/SillyTavern/Extension-TopInfoBar",
     "auto_update": false,
     "i18n": {
+        "ko-kr": "i18n/ko-kr.json",
         "zh-cn": "i18n/zh-cn.json",
         "zh-tw": "i18n/zh-tw.json"
     }
