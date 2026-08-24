@@ -163,7 +163,8 @@ body.movingUI #extensionTopBar {
 }
 
 #extensionConnectionProfilesStatus {
-    flex: 1;
+    flex: 2 1 280px;
+    min-width: 160px;
     opacity: 0.8;
     text-align: right;
     white-space: nowrap;
@@ -188,8 +189,8 @@ body.movingUI #extensionTopBar {
 
 #extensionConnectionProfilesSelect,
 #extensionConnectionPresetSelect {
-    flex: 1 1 180px;
-    min-width: 140px;
+    flex: 1 1 140px;
+    min-width: 110px;
     cursor: pointer;
     overflow-x: hidden;
     white-space: nowrap;
