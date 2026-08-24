@@ -16,7 +16,7 @@ body #sheld.flexPatch #chat {
 #extensionConnectionProfiles {
     display: none;
     flex-direction: row;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     flex-shrink: 0;
     align-content: center;
     align-items: center;
@@ -26,7 +26,7 @@ body #sheld.flexPatch #chat {
     backdrop-filter: blur(var(--SmartThemeBlurStrength));
     min-height: calc(var(--bottomFormBlockSize) * 0.75);
     padding: 0 10px;
-    gap: 10px;
+    gap: 8px;
     margin-top: -1px;
     font-size: calc(var(--mainFontSize) * 0.9);
     border-radius: 0 0 10px 10px;
@@ -163,8 +163,8 @@ body.movingUI #extensionTopBar {
 }
 
 #extensionConnectionProfilesStatus {
-    flex: 2 1 280px;
-    min-width: 160px;
+    flex: 1.4 1 210px;
+    min-width: 0;
     opacity: 0.8;
     text-align: right;
     white-space: nowrap;
@@ -189,13 +189,13 @@ body.movingUI #extensionTopBar {
 
 #extensionConnectionProfilesSelect,
 #extensionConnectionPresetSelect {
-    flex: 1 1 140px;
-    min-width: 110px;
+    flex: 1 1 150px;
+    min-width: 0;
     cursor: pointer;
     overflow-x: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
-    width: 100%;
+    width: auto;
     opacity: 0.8;
     background: none;
     border: none;
