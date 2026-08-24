@@ -27,7 +27,17 @@ const chatName = document.createElement('select');
 const connectionProfiles = document.createElement('div');
 const connectionProfilesStatus = document.createElement('div');
 const connectionProfilesSelect = document.createElement('select');
+const connectionPresetSelect = document.createElement('select');
 const connectionProfilesIcon = document.createElement('img');
+const generationPresetSelectors = {
+    kobold: '#settings_preset',
+    koboldhorde: '#settings_preset',
+    novel: '#settings_preset_novel',
+    openai: '#settings_preset_openai',
+    textgenerationwebui: '#settings_preset_textgenerationwebui',
+};
+let observedPresetSelect = null;
+let presetSelectObserver = null;
 const SEARCH_HIGHLIGHT_CLASS = 'extensionTopBarSearchHighlight';
 const SEARCH_CURRENT_CLASS = 'current';
 const searchHighlightOptions = { element: 'mark', className: SEARCH_HIGHLIGHT_CLASS };
@@ -1142,18 +1152,73 @@ function addConnectionProfiles() {
     connectionProfiles.id = 'extensionConnectionProfiles';
     connectionProfilesStatus.id = 'extensionConnectionProfilesStatus';
     connectionProfilesSelect.id = 'extensionConnectionProfilesSelect';
+    connectionPresetSelect.id = 'extensionConnectionPresetSelect';
     connectionProfilesSelect.title = t`Switch connection profile`;
+    connectionPresetSelect.title = t`Switch generation preset`;
 
     const connectionProfilesServerIcon = document.createElement('i');
     connectionProfilesServerIcon.id = 'extensionConnectionProfilesIcon';
     connectionProfilesServerIcon.className = 'fa-fw fa-solid fa-network-wired';
 
-    connectionProfiles.append(connectionProfilesServerIcon, connectionProfilesSelect, connectionProfilesStatus, connectionProfilesIcon);
+    connectionProfiles.append(connectionProfilesServerIcon, connectionProfilesSelect, connectionPresetSelect, connectionProfilesStatus, connectionProfilesIcon);
     sheld.insertBefore(connectionProfiles, chat);
 
     apiBlock.querySelectorAll('select').forEach(select => {
         select.addEventListener('input', () => updateStatusDebounced());
     });
+}
+
+/**
+ * Get the generation preset select for the currently active main API.
+ * @returns {HTMLSelectElement|null} Active generation preset select
+ */
+function getActiveGenerationPresetSelect() {
+    const context = SillyTavern.getContext();
+    const mainApi = context.mainApi ?? document.getElementById('main_api')?.value;
+    const selector = generationPresetSelectors[mainApi];
+    const presetSelect = selector ? document.querySelector(selector) : null;
+    return presetSelect instanceof HTMLSelectElement ? presetSelect : null;
+}
+
+/**
+ * Keep the top bar preset dropdown observing the active original preset dropdown.
+ * @param {HTMLSelectElement|null} presetSelect Active original preset select
+ * @returns {void}
+ */
+function observeActiveGenerationPresetSelect(presetSelect) {
+    if (observedPresetSelect === presetSelect) {
+        return;
+    }
+
+    presetSelectObserver?.disconnect();
+    observedPresetSelect = presetSelect;
+
+    if (!presetSelect) {
+        return;
+    }
+
+    presetSelectObserver = new MutationObserver(syncConnectionPresetSelect);
+    presetSelectObserver.observe(presetSelect, { childList: true, subtree: true });
+}
+
+/**
+ * Mirror the active SillyTavern generation preset dropdown into the top bar.
+ * @returns {void}
+ */
+function syncConnectionPresetSelect() {
+    const presetSelect = getActiveGenerationPresetSelect();
+    observeActiveGenerationPresetSelect(presetSelect);
+
+    if (!presetSelect || presetSelect.options.length === 0) {
+        connectionPresetSelect.innerHTML = '';
+        connectionPresetSelect.classList.add('displayNone');
+        return;
+    }
+
+    connectionPresetSelect.classList.remove('displayNone');
+    connectionPresetSelect.innerHTML = presetSelect.innerHTML;
+    connectionPresetSelect.value = presetSelect.value;
+    connectionPresetSelect.disabled = presetSelect.disabled;
 }
 
 function bindConnectionProfilesSelect() {
@@ -1165,15 +1230,38 @@ function bindConnectionProfilesSelect() {
         connectionProfilesSelect.addEventListener('change', async () => {
             connectionProfilesMainSelect.value = connectionProfilesSelect.value;
             connectionProfilesMainSelect.dispatchEvent(new Event('change'));
+            setTimeout(syncConnectionPresetSelect, 0);
         });
         connectionProfilesMainSelect.addEventListener('change', async () => {
             connectionProfilesSelect.value = connectionProfilesMainSelect.value;
+            setTimeout(syncConnectionPresetSelect, 0);
         });
         const observer = new MutationObserver(() => {
             connectionProfilesSelect.innerHTML = connectionProfilesMainSelect.innerHTML;
             connectionProfilesSelect.value = connectionProfilesMainSelect.value;
         });
         observer.observe(connectionProfilesMainSelect, { childList: true });
+    });
+}
+
+function bindConnectionPresetSelect() {
+    connectionPresetSelect.addEventListener('change', () => {
+        const presetSelect = getActiveGenerationPresetSelect();
+        if (!presetSelect) {
+            syncConnectionPresetSelect();
+            return;
+        }
+
+        presetSelect.value = connectionPresetSelect.value;
+        presetSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+
+    waitUntilCondition(() => getActiveGenerationPresetSelect() !== null).then(() => {
+        document.querySelectorAll('select[data-preset-manager-for]').forEach(select => {
+            select.addEventListener('change', syncConnectionPresetSelect);
+        });
+        document.getElementById('main_api')?.addEventListener('change', () => setTimeout(syncConnectionPresetSelect, 0));
+        syncConnectionPresetSelect();
     });
 }
 
@@ -1371,6 +1459,7 @@ async function onOnlineStatusChange() {
     } else {
         connectionProfilesSelect.classList.add('displayNone');
     }
+    syncConnectionPresetSelect();
 
     if (connectionProfilesStatus.nextElementSibling?.classList?.contains('icon-svg')) {
         connectionProfilesStatus.nextElementSibling.remove();
@@ -1491,6 +1580,7 @@ function restorePanelsState() {
     }
     eventSource.once(event_types.APP_READY, () => {
         bindConnectionProfilesSelect();
+        bindConnectionPresetSelect();
         restorePanelsState();
     });
     eventSource.on(event_types.ONLINE_STATUS_CHANGED, updateStatusDebounced);
